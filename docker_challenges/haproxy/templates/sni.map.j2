@@ -1,0 +1,5 @@
+#domainname     backendname
+{% for container in containers %}
+{% set name = container.subdomain %}
+{{ name }}. be_{{ name }}
+{% endfor %}

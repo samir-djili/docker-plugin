@@ -1,0 +1,33 @@
+{% extends "admin/challenges/update.html" %}
+{% block category %}
+<div class="form-group">
+    <label>
+        Category<br>
+        <small class="form-text text-muted">Challenge Category</small>
+    </label>
+    <input type="text" class="form-control chal-category" name="category" value="{{ challenge.category }}">
+</div>
+<div class="form-group">
+    <label for="DockerImage" id='dockerimage_label'>Docker Image:
+        <i class="far fa-question-circle text-muted cursor-help" data-toggle="tooltip" data-placement="right" title="The docker image for your challenge"></i>
+    </label>
+    <select id="dockerimage_select" name="docker_image" class="form-control" required></select>
+</div>
+<div class="form-group">
+    <label for="conn_type">Connection Type:
+        <i class="far fa-question-circle text-muted cursor-help" data-toggle="tooltip" data-placement="right" title="How users will connect to the container"></i>
+    </label>
+    <select id="conn_type" name="conn_type" class="form-control" required>
+        <option value="">Select connection type</option>
+        <option value="http" {% if challenge.conn_type == 'http' %}selected{% endif %}>HTTP (Web Service)</option>
+        <option value="ssh" {% if challenge.conn_type == 'ssh' %}selected{% endif %}>SSH (Terminal Access)</option>
+        <option value="tcp" {% if challenge.conn_type == 'tcp' %}selected{% endif %}>TCP (Raw Socket)</option>
+    </select>
+</div>
+{% endblock %}
+{% block footer %}
+<script>
+var DOCKER_IMAGE = '{{ challenge.docker_image }}';
+var CONN_TYPE = '{{ challenge.conn_type }}';
+</script>
+{% endblock %}

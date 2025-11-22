@@ -1,0 +1,139 @@
+global
+        log /dev/log    local0
+        log /dev/log    local1 notice
+        chroot /var/lib/haproxy
+        stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners
+        stats timeout 30s
+        user haproxy
+        group haproxy
+        daemon
+
+        # Default SSL material locations
+        ca-base /etc/ssl/certs
+        crt-base /etc/ssl/private
+
+        # See: https://ssl-config.mozilla.org/#server=haproxy&server-version=2.0.3&config=intermediate
+        ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+        ssl-default-server-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+        ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+        ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+	tune.ssl.default-dh-param 2048
+
+defaults
+        log     global
+        mode    http
+        option  httplog
+        option  dontlognull
+        timeout connect 5000
+        timeout client  50000
+        timeout server  50000
+        errorfile 400 /etc/haproxy/errors/400.http
+        errorfile 403 /etc/haproxy/errors/403.http
+        errorfile 408 /etc/haproxy/errors/408.http
+        errorfile 500 /etc/haproxy/errors/500.http
+        errorfile 502 /etc/haproxy/errors/502.http
+        errorfile 503 /etc/haproxy/errors/503.http
+        errorfile 504 /etc/haproxy/errors/504.http
+
+# Setup a haproxy table to store connection information for each user IP adress
+# We'll use it in each challenge that needs autoban to limit no of connections and
+# the connection rate for users
+{% if AUTO_BAN %}
+backend ip_blacklist
+    stick-table type ip size 1m expire 2m store gpc0
+{% endif %}
+
+# Stats listener
+
+listen stats
+    bind *:{{ STATS_PORT }}
+    mode http
+    stats enable
+    stats uri /
+    stats auth {{ STATS_USER }}:{{ STATS_PASSWORD }}
+
+
+# TLS frontends
+
+{% if SSL_CERT_PATH and SNI_MAP_RMT_PATH %}
+defaults
+  mode tcp
+  default_backend be_default
+  timeout connect 20000
+  timeout client  120000
+  timeout server  120000
+
+frontend tls
+{% if AUTO_BAN %}
+  tcp-request connection reject if { src_conn_rate(ip_blacklist) ge 50 }
+  tcp-request connection reject if { src_conn_cur(ip_blacklist) ge 50 }
+  tcp-request connection track-sc1 src table ip_blacklist
+  tcp-request content accept if { req_ssl_hello_type 1 }
+{% endif %}
+  bind *:443 ssl crt {{ SSL_CERT_PATH }}
+  tcp-request content accept if { req_ssl_hello_type 1 }
+  use_backend %[ssl_fc_sni,map_dom({{ SNI_MAP_RMT_PATH }})]
+{% endif %}
+
+
+# TCP frontends
+
+#defaults
+#  mode tcp
+#  timeout connect 20000
+#  timeout client  120000
+#  timeout server  120000
+#
+#{% for container in containers %}
+#frontend {{ container.subdomain }}
+#  bind *:{{ container.ports.split(',')[0] }}
+#  use_backend be_{{ container.subdomain }}
+#{% endfor %}
+
+# HTTP frontends
+
+
+# HTTP backends
+
+defaults
+  mode http
+  option prefer-last-server
+  balance leastconn
+  option httpchk HEAD /
+  timeout connect 20000
+  timeout client  120000
+  timeout server  120000
+
+{% for container in containers %}
+{% if container.conn_type == 'http' %}
+backend be_{{ container.subdomain }}
+  {% for port in container.ports.split(',') %}
+    server instances {{ container.container_ip }}:{{ port.split('/')[0] }} check
+  {% endfor %}
+{% endif %}
+{% endfor %}
+
+# TCP backends
+
+defaults
+  mode tcp
+  option tcp-check
+  balance roundrobin
+  timeout connect 20000
+  timeout client  120000
+  timeout server  120000
+
+{% for container in containers %}
+{% if container.conn_type != 'http' %}
+backend be_{{ container.subdomain }}
+  {% for port in container.ports.split(',') %}
+    server instances {{ container.container_ip }}:{{ port.split('/')[0] }} check
+  {% endfor %}
+{% endif %}
+{% endfor %}
+
+backend be_default
+  tcp-request content reject
+
+
+
