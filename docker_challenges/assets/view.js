@@ -140,6 +140,14 @@ function start_container(container) {
                 // mark that we just started so we can optionally delay to let routing/proxy update
                 window.JUST_STARTED = true;
                 get_docker_status(container);
+            } else if (response.status === 429) {
+                // Instance limit reached
+                return response.json().then(data => {
+                    throw {
+                        type: 'instance_limit',
+                        data: data
+                    };
+                });
             } else if (response.status === 403) {
                 throw new Error('Permission denied - you may need to wait before creating another container');
             } else {
@@ -148,11 +156,27 @@ function start_container(container) {
         })
         .catch(error => {
             console.error('Error starting container:', error);
-            ezal({
-                title: "Attention!",
-                body: "You can only revert a container once per 5 minutes! Please be patient.",
-                button: "Got it!"
-            });
+            
+            if (error.type === 'instance_limit' && error.data) {
+                // Show detailed instance limit error with oldest instance info
+                const oldestInfo = error.data.oldest_instance;
+                const message = error.data.message + 
+                    '<br><br><strong>Oldest Running Instance:</strong><br>' +
+                    'Challenge: ' + oldestInfo.challenge_name + '<br>' +
+                    'Image: ' + oldestInfo.docker_image;
+                
+                ezal({
+                    title: "Instance Limit Reached",
+                    body: message,
+                    button: "Got it!"
+                });
+            } else {
+                ezal({
+                    title: "Attention!",
+                    body: "You can only revert a container once per 5 minutes! Please be patient.",
+                    button: "Got it!"
+                });
+            }
             get_docker_status(container);
         });
 }

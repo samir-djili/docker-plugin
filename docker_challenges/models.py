@@ -12,6 +12,8 @@ class DockerConfig(db.Model):
     client_cert = db.Column("client_cert", db.String(2000), index=True)
     client_key = db.Column("client_key", db.String(3300), index=True)
     repositories = db.Column("repositories", db.String(1024), index=True)
+    enable_instance_limit = db.Column("enable_instance_limit", db.Boolean, default=False, index=True)
+    max_instances_per_team = db.Column("max_instances_per_team", db.Integer, default=3, index=True)
 
 
 class DockerChallengeTracker(db.Model):

@@ -93,6 +93,29 @@ class ContainerAPI(Resource):
         elif check != None:
             delete_instance(check.instance_id)
 
+        # Check instance limit configuration
+        docker_config = DockerConfig.query.filter_by(id=1).first()
+        if docker_config and docker_config.enable_instance_limit:
+            # Count current active instances for this team/user
+            current_containers = DockerChallengeTracker.query.filter_by(entity_id=session.id).all()
+            
+            if len(current_containers) >= docker_config.max_instances_per_team:
+                # Find the oldest instance
+                oldest_instance = min(current_containers, key=lambda x: int(x.timestamp))
+                oldest_challenge = DockerChallenge.query.filter_by(id=oldest_instance.docker_challenge_id).first()
+                
+                return {
+                    "success": False,
+                    "error": "instance_limit_reached",
+                    "message": f"You have reached the maximum limit of {docker_config.max_instances_per_team} concurrent instances. Please remove an instance before creating a new one.",
+                    "oldest_instance": {
+                        "challenge_name": oldest_challenge.name if oldest_challenge else "Unknown",
+                        "docker_image": oldest_challenge.docker_image if oldest_challenge else "Unknown",
+                        "timestamp": oldest_instance.timestamp,
+                        "instance_id": oldest_instance.id
+                    }
+                }, 429
+
         container_info = create_instance(image, session)  # , portsbl)
         # return if successfull
         return
@@ -196,6 +219,20 @@ def define_docker_admin(app):
                 b.ca_cert = None
                 b.client_cert = None
                 b.client_key = None
+            b.enable_instance_limit = request.form.get("enable_instance_limit", "False")
+            if b.enable_instance_limit == "True":
+                b.enable_instance_limit = True
+            else:
+                b.enable_instance_limit = False
+            if b.enable_instance_limit:
+                try:
+                    b.max_instances_per_team = int(request.form.get("max_instances_per_team", 3))
+                    if b.max_instances_per_team < 1:
+                        b.max_instances_per_team = 1
+                except:
+                    b.max_instances_per_team = 3
+            else:
+                b.max_instances_per_team = 3
             try:
                 b.repositories = ",".join(
                     request.form.to_dict(flat=False)["repositories"]
@@ -272,4 +309,8 @@ class DockerConfigForm(BaseForm):
     client_cert = FileField("Client Cert")
     client_key = FileField("Client Key")
     repositories = SelectMultipleField("Repositories")
+    enable_instance_limit = RadioField("Enable Instance Limit?")
+    max_instances_per_team = StringField(
+        "Max Instances Per Team", description="Maximum number of concurrent instances per team/user"
+    )
     submit = SubmitField("Submit")

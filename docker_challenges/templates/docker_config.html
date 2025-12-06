@@ -71,6 +71,24 @@
                         {% endif %}
                     </select>
                 </div>
+                <div class="form-group">
+                    <p>Enable Instance Limit?</p>
+                    <input type="radio" name="enable_instance_limit" id="instance-limit-radiobox-no" value="False" onclick="enable_instance_limit_input(!this.checked)" {% if not config.enable_instance_limit %}checked{% endif %} />
+                    <label for="instance-limit-radiobox-no">No</label>
+                    <input type="radio" name="enable_instance_limit" id="instance-limit-radiobox-yes" value="True" onclick="enable_instance_limit_input(this.checked)" {% if config.enable_instance_limit %}checked{% endif %} />
+                    <label for="instance-limit-radiobox-yes">Yes</label>
+                </div>
+                <div class="form-group">
+                    <label for="max-instances-input">
+                        Max Instances Per Team
+                    </label>
+                    {% if config.max_instances_per_team %}
+                    <input class="form-control" type="number" name="max_instances_per_team" id="max-instances-input" min="1" value='{{ config.max_instances_per_team }}' {% if not config.enable_instance_limit %}disabled{% endif %} />
+                    {% else %}
+                    <input class="form-control" type="number" name="max_instances_per_team" id="max-instances-input" min="1" value="3" {% if not config.enable_instance_limit %}disabled{% endif %} />
+                    {% endif %}
+                    <small class="form-text text-muted">Maximum number of concurrent challenge instances a team/user can have running.</small>
+                </div>
                 {{ form.nonce() }}
                 <div class="col-md-13 text-center">
                     <button type="submit" tabindex="0" class="btn btn-md btn-primary btn-outlined">
@@ -94,6 +112,10 @@ function enable_file_form(status) {
     document.docker_config.ca_file.required = !status;
     document.docker_config.client_file.required = !status;
     document.docker_config.key_file.required = !status;
+}
+
+function enable_instance_limit_input(status) {
+    document.getElementById('max-instances-input').disabled = !status;
 }
 
 </script>
